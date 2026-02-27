@@ -91,7 +91,7 @@ def build_sam2(
     OmegaConf.resolve(cfg)
     model = instantiate(cfg.model, _recursive_=True)
     _load_checkpoint(model, ckpt_path)
-    model = model.to(device)
+    model = model.to("cpu") #force to cpu
     if mode == "eval":
         model.eval()
     return model
