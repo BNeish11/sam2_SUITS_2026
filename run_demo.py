@@ -11,8 +11,10 @@ image_path = "notebooks/images/cars.jpg"   # Use a real demo image from the repo
 output     = "demo_output.png"
 # ---------------
 
-# Build model (forces CPU)
-model = build_sam2(model_cfg, checkpoint, device="cpu")
+# Build model (use GPU if available)
+device = "cuda" if torch.cuda.is_available() else "cpu"
+print(f"Using device: {device}")
+model = build_sam2(model_cfg, checkpoint, device=device)
 
 # Create predictor
 predictor = SAM2ImagePredictor(model)
