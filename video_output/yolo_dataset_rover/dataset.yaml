@@ -1,0 +1,4 @@
+path: C:/Users/y557u456/Documents/GitHub/sam2/video_output/yolo_dataset_rover
+train: images/train
+val: images/train
+names: ['rover']
