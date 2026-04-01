@@ -1,7 +1,12 @@
 from __future__ import annotations
 
 import argparse
+import io
+import socket
+import threading
+import time
 from pathlib import Path
+from queue import Queue
 
 import cv2
 from ultralytics import YOLO
@@ -32,6 +37,12 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Optional output MP4 path for annotated stream.",
     )
+    parser.add_argument(
+        "--stream-http",
+        type=str,
+        default=None,
+        help="Enable HTTP MJPEG streaming on host:port (e.g., 0.0.0.0:8080). Open http://<server_ip>:8080/stream in browser.",
+    )
     return parser.parse_args()
 
 
@@ -60,6 +71,92 @@ def make_writer(path: Path, fps: float, width: int, height: int) -> cv2.VideoWri
     return cv2.VideoWriter(str(path), fourcc, fps, (width, height))
 
 
+def http_mjpeg_server(
+    frame_queue: Queue,
+    host: str,
+    port: int,
+    stop_event: threading.Event,
+) -> None:
+    """Simple HTTP MJPEG streamer."""
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind((host, port))
+        sock.listen(1)
+        sock.settimeout(1.0)
+        print(f"[HTTP] MJPEG stream server listening on http://{host}:{port}/stream")
+
+        while not stop_event.is_set():
+            try:
+                client, addr = sock.accept()
+                print(f"[HTTP] Client connected from {addr}")
+                threading.Thread(
+                    target=handle_mjpeg_client,
+                    args=(client, frame_queue, stop_event),
+                    daemon=True,
+                ).start()
+            except socket.timeout:
+                pass
+    except Exception as e:
+        print(f"[HTTP] Server error: {e}")
+    finally:
+        sock.close()
+
+
+def handle_mjpeg_client(
+    client: socket.socket,
+    frame_queue: Queue,
+    stop_event: threading.Event,
+) -> None:
+    """Handle a single MJPEG client."""
+    try:
+        boundary = "frame"
+        request = client.recv(4096).decode()
+        if "GET" not in request:
+            client.close()
+            return
+
+        http_header = (
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Type: multipart/x-mixed-replace; boundary=" + boundary + "\r\n"
+            "Connection: keep-alive\r\n"
+            "Cache-Control: no-cache\r\n"
+            "\r\n"
+        )
+        client.send(http_header.encode())
+
+        last_frame = None
+        while not stop_event.is_set():
+            try:
+                with frame_queue.mutex:
+                    if not frame_queue.empty():
+                        last_frame = frame_queue.get_nowait()
+
+                if last_frame is not None:
+                    _, buffer = cv2.imencode(".jpg", last_frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+                    frame_bytes = buffer.tobytes()
+                    frame_data = (
+                        f"--{boundary}\r\n"
+                        "Content-Type: image/jpeg\r\n"
+                        f"Content-Length: {len(frame_bytes)}\r\n\r\n"
+                    ).encode() + frame_bytes + b"\r\n"
+                    client.send(frame_data)
+            except Exception:
+                break
+
+            if stop_event.is_set():
+                break
+            time.sleep(0.033)  # ~30 fps
+    except Exception as e:
+        print(f"[HTTP] Client error: {e}")
+    finally:
+        try:
+            client.close()
+        except Exception:
+            pass
+
+
+
 def main() -> None:
     args = parse_args()
     if not args.model.exists():
@@ -83,6 +180,20 @@ def main() -> None:
     if args.save_video is not None:
         writer = make_writer(args.save_video, fps, width, height)
         print(f"Saving annotated stream to: {args.save_video}")
+
+    frame_queue = Queue(maxsize=2)
+    stop_event = threading.Event()
+    http_thread = None
+
+    if args.stream_http:
+        host, port = args.stream_http.split(":")
+        port = int(port)
+        http_thread = threading.Thread(
+            target=http_mjpeg_server,
+            args=(frame_queue, host, port, stop_event),
+            daemon=True,
+        )
+        http_thread.start()
 
     frame_idx = 0
     try:
@@ -138,6 +249,12 @@ def main() -> None:
             if writer is not None:
                 writer.write(frame)
 
+            if args.stream_http:
+                try:
+                    frame_queue.put_nowait(frame.copy())
+                except Exception:
+                    pass
+
             if args.show:
                 cv2.imshow("YOLO HoloLens2 Rover Detection", frame)
                 if cv2.waitKey(1) & 0xFF == ord("q"):
@@ -145,11 +262,15 @@ def main() -> None:
 
             frame_idx += 1
     finally:
+        stop_event.set()
         cap.release()
         if writer is not None:
             writer.release()
         if args.show:
             cv2.destroyAllWindows()
+        if http_thread is not None:
+            http_thread.join(timeout=2.0)
+
 
 
 if __name__ == "__main__":
