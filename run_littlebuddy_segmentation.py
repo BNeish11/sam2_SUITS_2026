@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 
 import cv2
@@ -9,9 +8,9 @@ from sam2.build_sam import build_sam2_video_predictor
 
 checkpoint = "checkpoints/sam2.1_hiera_large.pt"
 model_cfg = "configs/sam2.1/sam2.1_hiera_l.yaml"
-frames_dir = Path("video_output/LittleBuddy_frames")
-source_video = Path("LittleBuddy.mp4")
-output_path = Path("video_output/LittleBuddy_segmented_wall_rover_floor.mp4")
+frames_dir = Path("training/HighQualityHololensFootage_frames")
+source_video = Path("training/HighQualityHololensFootage.mp4")
+output_path = Path("video_output/Hololens_segmented.mp4")
 picked_points_file = Path("picked_points.txt")
 
 
@@ -61,7 +60,7 @@ def main() -> None:
     
     class_points = {
         "rover": picked_rover_points if picked_rover_points else [(width // 2, int(height * 0.68))],
-        "wall": [
+        "obstacle": [
             (width // 2, height // 6),
             (width // 4, height // 4),
             ((3 * width) // 4, height // 4),
@@ -76,7 +75,7 @@ def main() -> None:
     if picked_rover_points:
         print(f"Loaded {len(picked_rover_points)} manually-picked rover points from {picked_points_file}")
 
-    class_obj_ids = {"rover": 1, "wall": 2, "floor": 3}
+    class_obj_ids = {"rover": 1, "obstacle": 2, "floor": 3}
     class_colors = {
         1: np.array([255, 0, 0]),
         2: np.array([0, 0, 255]),
@@ -87,7 +86,7 @@ def main() -> None:
     print(f"Frames: {len(frame_names)}")
     print(f"Resolution: {width}x{height}, FPS={fps}")
     print("Prompts:")
-    for class_name in ("rover", "wall", "floor"):
+    for class_name in ("rover", "obstacle", "floor"):
         print(f"  {class_name}: {class_points[class_name]}")
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -124,45 +123,22 @@ def main() -> None:
         video_segments = {}
         masks_dir = Path(__file__).resolve().parent / "video_output" / "masks"
         masks_dir.mkdir(parents=True, exist_ok=True)
-        print(f"Saving rover masks to: {masks_dir}")
+        print(f"Saving class masks to: {masks_dir}")
 
         for out_frame_idx, out_obj_ids, out_mask_logits in predictor.propagate_in_video(state):
-            wrote_mask_this_frame = False
-
-            for i, out_obj_id in enumerate(out_obj_ids):
-                obj_id = int(out_obj_id)
-                if obj_id == 1:  # rover only
-                    mask_bool = (out_mask_logits[i] > 0.0).cpu().numpy()
-                    mask_2d = np.squeeze(mask_bool)
-                    if mask_2d.ndim != 2:
-                        print(
-                            f"[WARN] frame {out_frame_idx}: unexpected mask shape {mask_2d.shape} for obj {obj_id}; skipping save"
-                        )
-                        continue
-
-                    mask_u8 = np.ascontiguousarray(mask_2d.astype(np.uint8) * 255)
-                    filename = masks_dir / f"frame_{out_frame_idx:05d}.png"
-                    ok = cv2.imwrite(str(filename), mask_u8)
-                    if not ok:
-                        print(
-                            f"[WARN] cv2.imwrite failed for {filename} "
-                            f"(shape={mask_u8.shape}, dtype={mask_u8.dtype}, min={mask_u8.min()}, max={mask_u8.max()})"
-                        )
-                    else:
-                        wrote_mask_this_frame = True
-
-            if not wrote_mask_this_frame and out_frame_idx % 50 == 0:
-                print(f"[DEBUG] frame {out_frame_idx}: no rover mask written; out_obj_ids={list(map(int, out_obj_ids))}")
-
             video_segments[out_frame_idx] = {
                 int(out_obj_id): (out_mask_logits[i] > 0.0).cpu().numpy()
                 for i, out_obj_id in enumerate(out_obj_ids)
             }
 
+            if out_frame_idx % 50 == 0:
+                print(f"[DEBUG] propagated frame {out_frame_idx}; out_obj_ids={list(map(int, out_obj_ids))}")
+
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     out_video = cv2.VideoWriter(str(output_path), fourcc, fps, (width, height))
 
     print("Rendering output video...")
+    written_masks = 0
     for frame_idx, frame_name in enumerate(frame_names):
         frame_bgr = cv2.imread(str(frames_dir / frame_name))
         if frame_bgr is None:
@@ -190,6 +166,29 @@ def main() -> None:
                 if np.any(mask_bool):
                     overlay[mask_bool] = overlay[mask_bool] * (1 - alpha) + color * alpha
 
+            rover_mask = (class_map == 1)
+            obstacle_mask = (class_map == 2)
+            floor_mask = (class_map == 3)
+
+            masks_to_save = {
+                1: rover_mask,
+                2: obstacle_mask,
+                3: floor_mask,
+            }
+
+            for obj_id, mask_bool in masks_to_save.items():
+                mask_u8 = np.ascontiguousarray(mask_bool.astype(np.uint8) * 255)
+                mask_path = masks_dir / f"{frame_idx:05d}_{obj_id}.png"
+                ok = cv2.imwrite(str(mask_path), mask_u8)
+                if not ok:
+                    print(f"[WARN] failed to write mask: {mask_path}")
+                else:
+                    written_masks += 1
+                    if not np.any(mask_u8):
+                        print(f"[WARN] empty mask: {mask_path}")
+        else:
+            print(f"[WARN] missing propagated masks for frame {frame_idx}")
+
         overlay_bgr = cv2.cvtColor(overlay.astype(np.uint8), cv2.COLOR_RGB2BGR)
         out_video.write(overlay_bgr)
 
@@ -198,6 +197,7 @@ def main() -> None:
 
     out_video.release()
     print(f"Saved segmented video: {output_path}")
+    print(f"Saved mask files: {written_masks} to {masks_dir}")
 
 
 if __name__ == "__main__":
