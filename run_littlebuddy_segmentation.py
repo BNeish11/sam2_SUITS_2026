@@ -10,32 +10,97 @@ checkpoint = "checkpoints/sam2.1_hiera_large.pt"
 model_cfg = "configs/sam2.1/sam2.1_hiera_l.yaml"
 frames_dir = Path("training/HighQualityHololensFootage_frames")
 source_video = Path("training/HighQualityHololensFootage.mp4")
-output_path = Path("video_output/Hololens_segmented.mp4")
-picked_points_file = Path("picked_points.txt")
+output_path = Path("video_output/Hololens_segmented_multiframe.mp4")
+picked_points_file_multiframe = Path("picked_hololens_points_multiframe.txt")
+picked_points_file_legacy = Path("picked_hololens_points.txt")
 
 
-def load_picked_points() -> list[tuple[int, int]]:
-    """Load manually-picked points from picked_points.txt if it exists."""
-    if not picked_points_file.exists():
-        return []
+def load_multiframe_picked_points() -> dict[int, dict[str, list[tuple[int, int]]]]:
+    """Load manually-picked points organized by frame then class."""
+    frame_points = {}
     
-    points = []
-    with open(picked_points_file, "r") as f:
+    points_file = picked_points_file_multiframe if picked_points_file_multiframe.exists() else picked_points_file_legacy
+    
+    if not points_file.exists():
+        return frame_points
+    
+    current_frame = None
+    current_class = None
+    
+    with open(points_file, "r") as f:
         for line in f:
             line = line.strip()
-            if not line or not line.startswith("("):
+            if not line:
                 continue
-            # Parse (x, y) format
-            line = line.strip("()")
-            parts = line.split(",")
-            if len(parts) == 2:
+            
+            # Parse frame headers like "# FRAME 0"
+            if line.startswith("# FRAME"):
+                frame_str = line.replace("# FRAME", "").strip()
                 try:
-                    x = int(parts[0].strip())
-                    y = int(parts[1].strip())
-                    points.append((x, y))
+                    current_frame = int(frame_str)
+                    if current_frame not in frame_points:
+                        frame_points[current_frame] = {"rover": [], "obstacle": [], "floor": []}
                 except ValueError:
                     continue
-    return points
+                current_class = None
+                continue
+            
+            # Parse class headers like "# ROVER"
+            if line.startswith("# "):
+                class_name = line[2:].lower()
+                if class_name in ["rover", "obstacle", "floor"]:
+                    current_class = class_name
+                continue
+            
+            # Parse point coordinates
+            if line.startswith("(") and current_frame is not None and current_class:
+                try:
+                    line = line.strip("()")
+                    parts = line.split(",")
+                    if len(parts) == 2:
+                        x = int(parts[0].strip())
+                        y = int(parts[1].strip())
+                        frame_points[current_frame][current_class].append((x, y))
+                except ValueError:
+                    continue
+    
+    return frame_points
+
+
+def load_picked_points() -> dict[str, list[tuple[int, int]]]:
+    """Load manually-picked points organized by class (legacy single-frame format)."""
+    class_points = {"rover": [], "obstacle": [], "floor": []}
+    
+    if not picked_points_file_legacy.exists():
+        return class_points
+    
+    current_class = None
+    with open(picked_points_file_legacy, "r") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            
+            # Check for class headers like "# ROVER"
+            if line.startswith("# "):
+                class_name = line[2:].lower()
+                if class_name in class_points:
+                    current_class = class_name
+                continue
+            
+            # Parse point coordinates
+            if line.startswith("(") and current_class:
+                try:
+                    line = line.strip("()")
+                    parts = line.split(",")
+                    if len(parts) == 2:
+                        x = int(parts[0].strip())
+                        y = int(parts[1].strip())
+                        class_points[current_class].append((x, y))
+                except ValueError:
+                    continue
+    
+    return class_points
 
 
 def main() -> None:
@@ -55,25 +120,33 @@ def main() -> None:
     fps = cap.get(cv2.CAP_PROP_FPS) or 30
     cap.release()
 
-    # Load manually-picked rover points if available
-    picked_rover_points = load_picked_points()
+    # Try loading multiframe points first, fall back to legacy single-frame points
+    multiframe_points = load_multiframe_picked_points()
+    legacy_points = load_picked_points()
     
-    class_points = {
-        "rover": picked_rover_points if picked_rover_points else [(width // 2, int(height * 0.68))],
-        "obstacle": [
-            (width // 2, height // 6),
-            (width // 4, height // 4),
-            ((3 * width) // 4, height // 4),
-        ],
-        "floor": [
-            (width // 2, (5 * height) // 6),
-            (width // 4, (4 * height) // 5),
-            ((3 * width) // 4, (4 * height) // 5),
-        ],
-    }
+    # If we have multiframe points, use them; otherwise fall back to legacy
+    use_multiframe = len(multiframe_points) > 0 and any(
+        any(pts for pts in frame_data.values()) for frame_data in multiframe_points.values()
+    )
     
-    if picked_rover_points:
-        print(f"Loaded {len(picked_rover_points)} manually-picked rover points from {picked_points_file}")
+    if use_multiframe:
+        print(f"Using multiframe points from {picked_points_file_multiframe}")
+        print(f"  Loaded {len(multiframe_points)} keyframes")
+        for frame_idx in sorted(multiframe_points.keys()):
+            frame_data = multiframe_points[frame_idx]
+            for class_name in ["rover", "obstacle", "floor"]:
+                pts = frame_data.get(class_name, [])
+                if pts:
+                    print(f"  Frame {frame_idx} - {class_name}: {len(pts)} points")
+    else:
+        print(f"Using legacy single-frame points from {picked_points_file_legacy}")
+        total_picked = sum(len(pts) for pts in legacy_points.values())
+        if total_picked > 0:
+            for cls_name, pts in legacy_points.items():
+                if pts:
+                    print(f"  {cls_name}: {len(pts)} points")
+        # Convert legacy to frame 0
+        multiframe_points = {0: legacy_points}
 
     class_obj_ids = {"rover": 1, "obstacle": 2, "floor": 3}
     class_colors = {
@@ -85,9 +158,6 @@ def main() -> None:
 
     print(f"Frames: {len(frame_names)}")
     print(f"Resolution: {width}x{height}, FPS={fps}")
-    print("Prompts:")
-    for class_name in ("rover", "obstacle", "floor"):
-        print(f"  {class_name}: {class_points[class_name]}")
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Building SAM2 predictor on {device}...")
@@ -97,27 +167,55 @@ def main() -> None:
         print("Initializing video state from frame directory...")
         state = predictor.init_state(video_path=str(frames_dir))
 
+        # Get the first frame with points (prioritize frame 0)
+        init_frames = sorted(multiframe_points.keys())
+        first_init_frame = init_frames[0] if init_frames else 0
+        
+        # Find first frame that has at least one class with points
+        first_frame_with_points = None
+        for frame_idx in init_frames:
+            if any(multiframe_points[frame_idx].get(cls, []) for cls in class_obj_ids.keys()):
+                first_frame_with_points = frame_idx
+                break
+        
+        if first_frame_with_points is None and init_frames:
+            first_frame_with_points = init_frames[0]
+        elif first_frame_with_points is None:
+            first_frame_with_points = 0
+        
+        print(f"Initializing objects at frame {first_frame_with_points}")
+        
+        # Initialize all classes at the first frame with any points
         for class_name, obj_id in class_obj_ids.items():
-            positive_points = class_points[class_name]
+            class_points_at_frame = multiframe_points.get(first_frame_with_points, {}).get(class_name, [])
+            
+            # Get points from other classes as negative examples
             negative_points = [
                 point_xy
-                for other_class_name, point_list in class_points.items()
+                for other_class_name in class_obj_ids.keys()
                 if other_class_name != class_name
-                for point_xy in point_list
+                for point_xy in multiframe_points.get(first_frame_with_points, {}).get(other_class_name, [])
             ]
-            all_points = positive_points + negative_points
-            all_labels = ([1] * len(positive_points)) + ([0] * len(negative_points))
+            
+            all_points = class_points_at_frame + negative_points
+            all_labels = ([1] * len(class_points_at_frame)) + ([0] * len(negative_points))
 
-            points = np.array(all_points, dtype=np.float32)
-            labels = np.array(all_labels, dtype=np.int32)
+            if all_points:
+                points = np.array(all_points, dtype=np.float32)
+                labels = np.array(all_labels, dtype=np.int32)
+                
+                print(f"  {class_name}: {len(class_points_at_frame)} positive + {len(negative_points)} negative points")
+                
+                predictor.add_new_points_or_box(
+                    inference_state=state,
+                    frame_idx=first_frame_with_points,
+                    obj_id=obj_id,
+                    points=points,
+                    labels=labels,
+                )
+            else:
+                print(f"  {class_name}: no points at frame {first_frame_with_points} (will initialize without)")
 
-            predictor.add_new_points_or_box(
-                inference_state=state,
-                frame_idx=0,
-                obj_id=obj_id,
-                points=points,
-                labels=labels,
-            )
 
         print("Propagating masks through video...")
         video_segments = {}
@@ -125,7 +223,39 @@ def main() -> None:
         masks_dir.mkdir(parents=True, exist_ok=True)
         print(f"Saving class masks to: {masks_dir}")
 
+        # Track which keyframes we've processed
+        processed_keyframes = set()
+        
         for out_frame_idx, out_obj_ids, out_mask_logits in predictor.propagate_in_video(state):
+            # Check if this frame has new points to add
+            if out_frame_idx in multiframe_points and out_frame_idx not in processed_keyframes:
+                processed_keyframes.add(out_frame_idx)
+                frame_data = multiframe_points[out_frame_idx]
+                
+                # Add new points for this frame
+                for class_name, obj_id in class_obj_ids.items():
+                    class_points_at_frame = frame_data.get(class_name, [])
+                    negative_points = [
+                        point_xy
+                        for other_class_name in class_obj_ids.keys()
+                        if other_class_name != class_name
+                        for point_xy in frame_data.get(other_class_name, [])
+                    ]
+                    
+                    all_points = class_points_at_frame + negative_points
+                    all_labels = ([1] * len(class_points_at_frame)) + ([0] * len(negative_points))
+                    
+                    if all_points:
+                        points = np.array(all_points, dtype=np.float32)
+                        labels = np.array(all_labels, dtype=np.int32)
+                        
+                        predictor.add_new_points_or_box(
+                            inference_state=state,
+                            frame_idx=out_frame_idx,
+                            obj_id=obj_id,
+                            points=points,
+                            labels=labels,
+                        )
             video_segments[out_frame_idx] = {
                 int(out_obj_id): (out_mask_logits[i] > 0.0).cpu().numpy()
                 for i, out_obj_id in enumerate(out_obj_ids)
