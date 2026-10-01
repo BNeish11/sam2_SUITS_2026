@@ -1,0 +1,35 @@
+# IMAGE Rover_1_parking_lot.jpeg
+# POS
+(1455, 1485)
+# NEG
+(241, 322)
+# IMAGE Rover_2_Tree.jpeg
+# POS
+(1539, 1522)
+# NEG
+(241, 322)
+# IMAGE rover_3_halfshade_grass.jpeg
+# POS
+(1554, 1405)
+# NEG
+(241, 322)
+# IMAGE rover_4_door.jpeg
+# POS
+(699, 1398)
+# NEG
+(241, 322)
+# IMAGE rover_5_tree2.jpeg
+# POS
+(2018, 1560)
+# NEG
+(241, 322)
+# IMAGE rover_6_tallgrass.jpeg
+# POS
+(2003, 1371)
+# NEG
+(241, 322)
+# IMAGE rover_7_upstairs_far.jpeg
+# POS
+(1445, 2674)
+# NEG
+(241, 322)

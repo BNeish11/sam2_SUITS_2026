@@ -1,0 +1,14 @@
+# IMAGE Rover_1_parking_lot.jpeg
+(1455, 1485)
+# IMAGE Rover_2_Tree.jpeg
+(1539, 1522)
+# IMAGE rover_3_halfshade_grass.jpeg
+(1554, 1405)
+# IMAGE rover_4_door.jpeg
+(699, 1398)
+# IMAGE rover_5_tree2.jpeg
+(2018, 1560)
+# IMAGE rover_6_tallgrass.jpeg
+(2003, 1371)
+# IMAGE rover_7_upstairs_far.jpeg
+(1445, 2674)

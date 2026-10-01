@@ -1,0 +1,4 @@
+path: training/rover images/rover_retrain_dataset
+train: images/train
+val: images/val
+names: ['rover']

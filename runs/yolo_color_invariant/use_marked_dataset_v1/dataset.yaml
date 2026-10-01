@@ -1,0 +1,4 @@
+path: C:/Users/y557u456/Documents/GitHub/sam2/runs/yolo_color_invariant/use_marked_dataset_v1
+train: images/train
+val: images/val
+names: ['rover']

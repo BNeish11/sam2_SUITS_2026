@@ -1,0 +1,20 @@
+# IMAGE Rover_1_parking_lot.jpeg
+(23.3, 2247.7)
+
+# IMAGE Rover_2_Tree.jpeg
+(32.7, 1139.5)
+
+# IMAGE rover_3_halfshade_grass.jpeg
+(1751.6, 1239.8)
+
+# IMAGE rover_4_door.jpeg
+(934.3, 2467.2)
+
+# IMAGE rover_5_tree2.jpeg
+(3993.4, 128.5)
+
+# IMAGE rover_6_tallgrass.jpeg
+(808.2, 2884.7)
+
+# IMAGE rover_7_upstairs_far.jpeg
+(3986.0, 579.5)

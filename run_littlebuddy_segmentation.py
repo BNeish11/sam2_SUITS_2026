@@ -300,22 +300,22 @@ def main() -> None:
             obstacle_mask = (class_map == 2)
             floor_mask = (class_map == 3)
 
-            masks_to_save = {
-                1: rover_mask,
-                2: obstacle_mask,
-                3: floor_mask,
-            }
+            #Create a single RGB mask image 
+            color_mask = np.zeros((height, width, 3), dtype=np.uint8)
 
-            for obj_id, mask_bool in masks_to_save.items():
-                mask_u8 = np.ascontiguousarray(mask_bool.astype(np.uint8) * 255)
-                mask_path = masks_dir / f"{frame_idx:05d}_{obj_id}.png"
-                ok = cv2.imwrite(str(mask_path), mask_u8)
-                if not ok:
+            #apply colors
+            color_mask[rover_mask] = (0,0,255) # Red for rover
+            color_mask[obstacle_mask] = (255,0,0) # Blue for obstacles
+            color_mask[floor_mask] = (0,255,0) # Green for floor
+
+            #Save ONE combined mask per frame 
+            mask_path = masks_dir / f"{frame_idx:05d}.png"
+            ok = cv2.imwrite(str(mask_path), color_mask)
+            
+            if not ok:
                     print(f"[WARN] failed to write mask: {mask_path}")
-                else:
+            else:
                     written_masks += 1
-                    if not np.any(mask_u8):
-                        print(f"[WARN] empty mask: {mask_path}")
         else:
             print(f"[WARN] missing propagated masks for frame {frame_idx}")
 

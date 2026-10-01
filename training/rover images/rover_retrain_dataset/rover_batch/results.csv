@@ -1,0 +1,8 @@
+image,status,rover_class_id,rover_count,det_class_id,det_class_name,det_conf,fallback_used,bbox_x1,bbox_y1,bbox_x2,bbox_y2,mask_pixels
+Rover_1_parking_lot.jpeg,ok_fallback,,0,9,traffic light,0.2215941995382309,True,1305.161865234375,1243.3369140625,1636.552978515625,1757.1553955078125,132576
+Rover_2_Tree.jpeg,no_detection,,0,,,,False,,,,,0
+rover_3_halfshade_grass.jpeg,no_detection,,0,,,,False,,,,,0
+rover_4_door.jpeg,no_detection,,0,,,,False,,,,,0
+rover_5_tree2.jpeg,ok_fallback,,0,0,person,0.333227276802063,True,1752.6241455078125,1074.32275390625,2308.442626953125,2082.614013671875,249799
+rover_6_tallgrass.jpeg,ok_fallback,,0,6,train,0.22625644505023956,True,1852.0941162109375,1074.285400390625,2196.229736328125,1662.637451171875,146287
+rover_7_upstairs_far.jpeg,ok_fallback,,0,9,traffic light,0.4327077865600586,True,1092.61962890625,2316.78369140625,1818.37744140625,3006.90380859375,233370

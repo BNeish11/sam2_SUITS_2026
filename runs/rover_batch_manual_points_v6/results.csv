@@ -1,0 +1,8 @@
+image,status,rover_class_id,rover_count,det_class_id,det_class_name,det_conf,bbox_x1,bbox_y1,bbox_x2,bbox_y2,mask_pixels
+Rover_1_parking_lot.jpeg,manual_failed,,0,,,,,,,,0
+Rover_2_Tree.jpeg,ok_manual,,0,,rover,0.8322480996783379,0.0,1078.0,2307.0,2486.0,941192
+rover_3_halfshade_grass.jpeg,manual_failed,,0,,,,,,,,0
+rover_4_door.jpeg,manual_failed,,0,,,,,,,,0
+rover_5_tree2.jpeg,ok_manual,,0,,rover,0.6827968800212271,980.0,1647.0,2214.0,3012.0,650375
+rover_6_tallgrass.jpeg,ok_manual,,0,,rover,0.6989428929480156,858.0,99.0,3238.0,2914.0,1805456
+rover_7_upstairs_far.jpeg,ok_manual,,0,,rover,0.5622161868160994,132.0,1280.0,1708.0,2400.0,83232
